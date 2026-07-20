@@ -4,9 +4,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { OttoWorkspace } from "@/components/otto-workspace";
 import type {
   AnalyzeResponse,
-  EmailDraft,
   Insight,
   Platform,
   Recommendation,
@@ -87,6 +87,8 @@ export function DashboardClient() {
 
   const creator = result?.creator;
   const analysis = result?.analysis;
+  const recommendations = useMemo(() => analysis?.recommendations ?? [], [analysis]);
+  const selectedRecommendation = activeRecommendation ?? recommendations[0] ?? null;
   const thumbnails = useMemo(
     () => creator?.recentPosts.filter((post) => post.thumbnailUrl).slice(0, 3) ?? [],
     [creator]
@@ -95,6 +97,21 @@ export function DashboardClient() {
     () => creator?.recentPosts.find((post) => post.isBreakout) ?? null,
     [creator]
   );
+
+  useEffect(() => {
+    if (recommendations.length === 0) {
+      setActiveRecommendation(null);
+      return;
+    }
+
+    setActiveRecommendation((currentRecommendation) => {
+      const stillExists = recommendations.some(
+        (recommendation) => recommendation.title === currentRecommendation?.title
+      );
+
+      return stillExists ? currentRecommendation : recommendations[0];
+    });
+  }, [recommendations]);
 
   if (!result || !creator || !analysis) {
     return (
@@ -109,138 +126,84 @@ export function DashboardClient() {
 
   return (
     <main className="min-h-screen bg-paper text-ink">
-      <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5 lg:grid-cols-[300px_1fr]">
-        <aside className="self-start rounded-lg border border-ink/10 bg-white p-5">
-          <DashboardNav compact />
-          <div className="mt-8 flex items-center gap-3">
-            <Avatar creator={creator} />
-            <div className="min-w-0">
-              <p className="truncate text-2xl font-semibold tracking-tight">
-                @{creator.handle}
-              </p>
-              <p className="text-sm capitalize text-ink/50">{creator.platform}</p>
+      <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
+        <DashboardNav />
+
+        <CreatorSnapshot creator={creator} dataSource={result.dataSource} />
+
+        <section className="rounded-lg border border-ink/10 bg-white p-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-signal">Today</p>
+              <h1 className="text-3xl font-semibold tracking-tight">
+                Today&apos;s Priorities
+              </h1>
+            </div>
+            <span className="text-sm text-ink/50">{creator.engagementTrend}</span>
+          </div>
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            {analysis.priorities.map((priority) => (
+              <article
+                className="rounded-lg border border-ink/10 bg-paper p-4"
+                key={priority.title}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-semibold uppercase tracking-[0.14em] text-signal">
+                    {priority.agentSource}
+                  </span>
+                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-ink/60">
+                    {priority.urgency}
+                  </span>
+                </div>
+                <h2 className="mt-4 text-lg font-semibold tracking-tight">
+                  {priority.title}
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-ink/62">{priority.summary}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        {creator.platform === "tiktok" ? (
+          <TikTokSpotlight creatorAvgViews={creator.avgViews} breakoutPost={breakoutPost} />
+        ) : null}
+
+        <section className="grid gap-5 lg:grid-cols-[minmax(260px,28%)_1fr]">
+          <ActionCenter
+            recommendations={recommendations}
+            selectedRecommendation={selectedRecommendation}
+            onSelect={setActiveRecommendation}
+          />
+          <OttoWorkspace creator={creator} selectedRecommendation={selectedRecommendation} />
+        </section>
+
+        <section className="grid gap-5 xl:grid-cols-[1fr_340px]">
+          <div className="rounded-lg border border-ink/10 bg-white p-5">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-xl font-semibold tracking-tight">Insights</h2>
+              <span className="text-sm text-ink/45">{analysis.insights.length} signals</span>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {analysis.insights.map((insight) => (
+                <InsightCard insight={insight} key={`${insight.metric}-${insight.trend}`} />
+              ))}
             </div>
           </div>
 
-          <div className="mt-5 grid gap-2">
-            {result.dataSource === "live" ? (
-              <LiveBadge platform={creator.platform} />
-            ) : (
-              <span className="w-fit rounded-full bg-ink/[0.06] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-ink/58">
-                {result.dataSource} data
-              </span>
-            )}
-            <Metric label="Followers" value={formatNumber(creator.followerCount)} />
-            <Metric label="Engagement" value={`${creator.engagementRate}%`} />
-            {creator.platform === "tiktok" ? (
-              <Metric label="Avg views" value={formatNumber(creator.avgViews ?? 0)} />
-            ) : null}
+          <div className="rounded-lg border border-ink/10 bg-white p-4">
+            <h2 className="text-xl font-semibold tracking-tight">Referenced posts</h2>
+            <div className="mt-4 grid gap-3">
+              {thumbnails.length > 0 ? (
+                thumbnails.map((post) => <PostThumbnail key={post.timestamp} post={post} />)
+              ) : (
+                <p className="text-sm leading-6 text-ink/55">
+                  No public thumbnails were returned for this scrape.
+                </p>
+              )}
+            </div>
           </div>
-        </aside>
-
-        <section className="grid gap-5">
-          <section className="rounded-lg border border-ink/10 bg-white p-5">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-signal">Today</p>
-                <h1 className="text-3xl font-semibold tracking-tight">
-                  Today&apos;s Priorities
-                </h1>
-              </div>
-              <span className="text-sm text-ink/50">{creator.engagementTrend}</span>
-            </div>
-            <div className="mt-5 grid gap-3 md:grid-cols-3">
-              {analysis.priorities.map((priority) => (
-                <article
-                  className="rounded-lg border border-ink/10 bg-paper p-4"
-                  key={priority.title}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs font-semibold uppercase tracking-[0.14em] text-signal">
-                      {priority.agentSource}
-                    </span>
-                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-ink/60">
-                      {priority.urgency}
-                    </span>
-                  </div>
-                  <h2 className="mt-4 text-lg font-semibold tracking-tight">
-                    {priority.title}
-                  </h2>
-                  <p className="mt-2 text-sm leading-6 text-ink/62">{priority.summary}</p>
-                </article>
-              ))}
-            </div>
-          </section>
-
-          {creator.platform === "tiktok" ? (
-            <TikTokSpotlight creatorAvgViews={creator.avgViews} breakoutPost={breakoutPost} />
-          ) : null}
-
-          <section className="grid gap-5 xl:grid-cols-[1fr_340px]">
-            <div className="rounded-lg border border-ink/10 bg-white p-5">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-xl font-semibold tracking-tight">Insights</h2>
-                <span className="text-sm text-ink/45">{analysis.insights.length} signals</span>
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {analysis.insights.map((insight) => (
-                  <InsightCard insight={insight} key={`${insight.metric}-${insight.trend}`} />
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-ink/10 bg-white p-4">
-              <h2 className="text-xl font-semibold tracking-tight">Referenced posts</h2>
-              <div className="mt-4 grid gap-3">
-                {thumbnails.length > 0 ? (
-                  thumbnails.map((post) => <PostThumbnail key={post.timestamp} post={post} />)
-                ) : (
-                  <p className="text-sm leading-6 text-ink/55">
-                    No public thumbnails were returned for this scrape.
-                  </p>
-                )}
-              </div>
-            </div>
-          </section>
-
-          <section className="rounded-lg border border-ink/10 bg-white p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold tracking-tight">Opportunities</h2>
-              <span className="text-sm text-ink/45">
-                {analysis.recommendations.length} recommended
-              </span>
-            </div>
-            <div className="mt-4 divide-y divide-ink/10">
-              {analysis.recommendations.map((recommendation) => (
-                <button
-                  className="grid w-full gap-2 py-4 text-left transition hover:bg-ink/[0.025] sm:grid-cols-[1fr_auto]"
-                  key={recommendation.title}
-                  onClick={() => setActiveRecommendation(recommendation)}
-                  type="button"
-                >
-                  <span>
-                    <span className="block text-lg font-semibold tracking-tight">
-                      {recommendation.title}
-                    </span>
-                    <span className="mt-1 block max-w-3xl text-sm leading-6 text-ink/60">
-                      {recommendation.description}
-                    </span>
-                  </span>
-                  <span className="h-fit w-fit rounded-full bg-paper px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-ink/58">
-                    {recommendation.actionType}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
         </section>
       </div>
-
-      <RecommendationDrawer
-        creator={creator}
-        onClose={() => setActiveRecommendation(null)}
-        recommendation={activeRecommendation}
-      />
     </main>
   );
 }
@@ -344,6 +307,52 @@ function DashboardNav({ compact = false }: { compact?: boolean }) {
         </a>
       ) : null}
     </nav>
+  );
+}
+
+function CreatorSnapshot({
+  creator,
+  dataSource
+}: {
+  creator: AnalyzeResponse["creator"];
+  dataSource: AnalyzeResponse["dataSource"];
+}) {
+  return (
+    <section className="rounded-lg border border-ink/10 bg-white p-5">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar creator={creator} />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-signal">
+              Creator Snapshot
+            </p>
+            <h1 className="truncate text-3xl font-semibold tracking-tight">
+              @{creator.handle}
+            </h1>
+            <p className="text-sm capitalize text-ink/50">{creator.platform}</p>
+          </div>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[640px] lg:grid-cols-4">
+          <div className="flex items-center rounded-md bg-paper p-3">
+            {dataSource === "live" ? (
+              <LiveBadge platform={creator.platform} />
+            ) : (
+              <span className="w-fit rounded-full bg-ink/[0.06] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-ink/58">
+                {dataSource} data
+              </span>
+            )}
+          </div>
+          <Metric label="Followers" value={formatNumber(creator.followerCount)} />
+          <Metric label="Engagement" value={`${creator.engagementRate}%`} />
+          {creator.platform === "tiktok" ? (
+            <Metric label="Avg views" value={formatNumber(creator.avgViews ?? 0)} />
+          ) : (
+            <Metric label="Trend" value={creator.engagementTrend} />
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -454,242 +463,125 @@ function PostThumbnail({ dark = false, post }: { dark?: boolean; post: RecentPos
   );
 }
 
-function RecommendationDrawer({
-  creator,
-  onClose,
-  recommendation
+function ActionCenter({
+  onSelect,
+  recommendations,
+  selectedRecommendation
 }: {
-  creator: AnalyzeResponse["creator"];
-  onClose: () => void;
-  recommendation: Recommendation | null;
+  onSelect: (recommendation: Recommendation) => void;
+  recommendations: Recommendation[];
+  selectedRecommendation: Recommendation | null;
 }) {
-  const [email, setEmail] = useState<EmailDraft | null>(null);
-  const [emailBody, setEmailBody] = useState("");
-  const [isDrafting, setIsDrafting] = useState(false);
-  const [emailError, setEmailError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    setEmail(null);
-    setEmailBody("");
-    setIsDrafting(false);
-    setEmailError(null);
-    setCopied(false);
-  }, [recommendation]);
-
-  useEffect(() => {
-    if (!email) {
-      return;
-    }
-
-    setEmailBody("");
-
-    let index = 0;
-    const interval = window.setInterval(() => {
-      index += 3;
-      setEmailBody(email.body.slice(0, index));
-
-      if (index >= email.body.length) {
-        window.clearInterval(interval);
-      }
-    }, 18);
-
-    return () => window.clearInterval(interval);
-  }, [email]);
-
-  if (!recommendation) {
-    return null;
-  }
-
-  async function draftOutreach() {
-    setIsDrafting(true);
-    setEmailError(null);
-    setCopied(false);
-
-    try {
-      const response = await fetch("/api/generate-email", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          profile: creator,
-          recommendation
-        })
-      });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to draft outreach.");
-      }
-
-      setEmail(payload);
-    } catch (error) {
-      setEmailError(
-        error instanceof Error ? error.message : "Unable to draft outreach."
-      );
-    } finally {
-      setIsDrafting(false);
-    }
-  }
-
-  async function copyEmail() {
-    if (!email) {
-      return;
-    }
-
-    await navigator.clipboard.writeText(`Subject: ${email.subject}\n\n${emailBody}`);
-    setCopied(true);
-  }
-
   return (
-    <div className="fixed inset-0 z-50">
-      <button
-        aria-label="Close recommendation"
-        className="absolute inset-0 bg-ink/30"
-        onClick={onClose}
-        type="button"
-      />
-      <aside className="absolute bottom-0 right-0 top-0 flex w-full max-w-xl flex-col overflow-y-auto bg-white p-5 shadow-[-24px_0_70px_rgba(17,17,17,0.18)]">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-signal">
-              Opportunity
-            </p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight">
-              {recommendation.title}
-            </h2>
-          </div>
-          <button
-            className="rounded-full border border-ink/10 px-3 py-1 text-sm text-ink/60 hover:text-ink"
-            onClick={onClose}
-            type="button"
-          >
-            Close
-          </button>
+    <aside className="landing-rise self-start overflow-hidden rounded-lg border border-ink/10 bg-white">
+      <div className="border-b border-ink/10 px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold tracking-tight">Action Center</h2>
+          <span className="rounded bg-paper px-2 py-1 text-xs font-semibold text-ink/50">
+            {recommendations.length}
+          </span>
         </div>
-
-        <p className="mt-5 text-base leading-7 text-ink/64">
-          {recommendation.description}
+        <p className="mt-1 text-xs leading-5 text-ink/50">
+          Prioritized missions generated from the creator brief.
         </p>
+      </div>
 
-        <section className="mt-7">
-          <h3 className="text-sm font-semibold text-ink/75">Reasoning</h3>
-          <ul className="mt-3 grid gap-3">
-            {recommendation.reasoning.map((reason) => (
-              <li className="rounded-md bg-paper p-3 text-sm leading-6 text-ink/66" key={reason}>
-                {reason}
-              </li>
-            ))}
-          </ul>
-        </section>
+      <div className="bg-paper/70 p-2">
+        {recommendations.map((recommendation, index) => {
+          const isSelected = selectedRecommendation?.title === recommendation.title;
+          const mission = getMissionDisplay(recommendation, index);
 
-        <section className="mt-7">
-          <h3 className="text-sm font-semibold text-ink/75">Supporting metrics</h3>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            {recommendation.supportingMetrics.map((metric) => (
-              <div className="rounded-md border border-ink/10 p-3" key={metric.label}>
-                <p className="text-xs font-medium text-ink/45">{metric.label}</p>
-                <p className="mt-1 text-lg font-semibold">{metric.value}</p>
-                <p className="text-xs text-moss">{metric.trend}</p>
-              </div>
-            ))}
-          </div>
-        </section>
+          return (
+            <button
+              className={`mb-2 grid w-full gap-3 rounded-md border p-3 text-left transition last:mb-0 ${
+                isSelected
+                  ? "border-ink bg-white shadow-[0_10px_24px_rgba(17,17,17,0.08)]"
+                  : "border-ink/10 bg-white/70 hover:border-ink/18 hover:bg-white"
+              }`}
+              key={recommendation.title}
+              onClick={() => onSelect(recommendation)}
+              type="button"
+            >
+              <span className="flex items-start justify-between gap-3">
+                <span className="min-w-0">
+                  <span className="flex items-center gap-2">
+                    <span
+                      className={`h-2 w-2 rounded-full ${
+                        mission.priority === "High"
+                          ? "bg-signal"
+                          : mission.priority === "Medium"
+                            ? "bg-moss"
+                            : "bg-ink/28"
+                      }`}
+                    />
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink/45">
+                      {mission.category}
+                    </span>
+                  </span>
+                  <span className="mt-2 block text-sm font-semibold leading-5 tracking-tight text-ink">
+                    {recommendation.title}
+                  </span>
+                </span>
+                <span className="rounded border border-ink/10 bg-paper px-2 py-1 text-[11px] font-semibold text-ink/55">
+                  {mission.priority}
+                </span>
+              </span>
 
-        <button
-          className="mt-8 min-h-12 rounded-md bg-ink px-5 text-sm font-semibold text-white transition hover:bg-ink/86 disabled:cursor-not-allowed disabled:bg-ink/35"
-          disabled={isDrafting}
-          onClick={draftOutreach}
-          type="button"
-        >
-          {isDrafting ? "Drafting..." : "Draft outreach"}
-        </button>
-
-        {emailError ? (
-          <p className="mt-3 rounded-md bg-signal/10 p-3 text-sm text-ink/70">
-            {emailError}
-          </p>
-        ) : null}
-
-        {email ? (
-          <section className="mt-7 rounded-lg border border-ink/10 bg-paper p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.14em] text-signal">
-                  Draft email
-                </p>
-                <input
-                  className="mt-2 w-full rounded-md border border-ink/10 bg-white px-3 py-2 text-lg font-semibold outline-none focus:border-signal sm:min-w-[360px]"
-                  onChange={(event) =>
-                    setEmail({
-                      ...email,
-                      subject: event.target.value
-                    })
-                  }
-                  value={email.subject}
-                />
-              </div>
-              <button
-                className="h-10 rounded-md border border-ink/15 px-4 text-sm font-semibold text-ink/68 transition hover:border-ink/35 hover:text-ink"
-                onClick={copyEmail}
-                type="button"
-              >
-                {copied ? "Copied" : "Copy"}
-              </button>
-            </div>
-
-            <textarea
-              className="mt-4 min-h-[220px] w-full resize-y rounded-md border border-ink/10 bg-white p-3 text-sm leading-6 outline-none focus:border-signal"
-              onChange={(event) => setEmailBody(event.target.value)}
-              value={emailBody}
-            />
-
-            <div className="mt-4 rounded-md border border-moss/20 bg-white p-3">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-moss">
-                Metric proof
-              </p>
-              <p className="whitespace-pre-wrap text-sm leading-6 text-ink/68">
-                {highlightMetrics(emailBody, recommendation.supportingMetrics.map((metric) => metric.value))}
-              </p>
-            </div>
-          </section>
-        ) : null}
-      </aside>
-    </div>
+              <span className="grid gap-2 text-[11px] sm:grid-cols-2">
+                <MissionMeta label="Impact" value={mission.expectedImpact} />
+                <MissionMeta label="Confidence" value={mission.confidenceScore} />
+                <MissionMeta label="Effort" value={mission.estimatedEffort} />
+                <MissionMeta label="Priority" value={mission.priority} />
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </aside>
   );
 }
 
-function highlightMetrics(body: string, metrics: string[]) {
-  const escapedMetrics = metrics
-    .filter(Boolean)
-    .sort((a, b) => b.length - a.length)
-    .map(escapeRegex);
-
-  if (escapedMetrics.length === 0) {
-    return body;
-  }
-
-  const matcher = new RegExp(`(${escapedMetrics.join("|")})`, "gi");
-  const parts = body.split(matcher);
-
-  return parts.map((part, index) => {
-    const isMetric = metrics.some(
-      (metric) => metric.toLowerCase() === part.toLowerCase()
-    );
-
-    return isMetric ? (
-      <mark className="rounded bg-signal/15 px-1 text-ink" key={`${part}-${index}`}>
-        {part}
-      </mark>
-    ) : (
-      <span key={`${part}-${index}`}>{part}</span>
-    );
-  });
+function MissionMeta({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="flex items-center justify-between gap-2 rounded bg-paper px-2 py-1.5">
+      <span className="font-medium text-ink/40">{label}</span>
+      <span className="truncate font-semibold text-ink/68">{value}</span>
+    </span>
+  );
 }
 
-function escapeRegex(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function getMissionDisplay(recommendation: Recommendation, index: number) {
+  const priority = index === 0 ? "High" : index === 1 ? "Medium" : "Low";
+  const confidenceBase = 78 + Math.min(recommendation.supportingMetrics.length, 4) * 4;
+  const confidenceScore = `${Math.min(confidenceBase + recommendation.reasoning.length, 96)}%`;
+  const expectedImpact =
+    recommendation.supportingMetrics[0]?.trend || recommendation.supportingMetrics[0]?.value || "Qualified lift";
+  const estimatedEffort =
+    recommendation.actionType === "pricing"
+      ? "Medium"
+      : recommendation.actionType === "outreach"
+        ? "Low"
+        : "Medium";
+
+  return {
+    category: formatActionCategory(recommendation.actionType),
+    confidenceScore,
+    estimatedEffort,
+    expectedImpact,
+    priority
+  };
+}
+
+function formatActionCategory(actionType: Recommendation["actionType"]) {
+  if (actionType === "outreach") {
+    return "Partnerships";
+  }
+
+  if (actionType === "content") {
+    return "Content";
+  }
+
+  return "Pricing";
 }
 
 function PlatformIcon({ platform }: { platform: Platform }) {
