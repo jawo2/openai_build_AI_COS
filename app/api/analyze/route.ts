@@ -7,7 +7,12 @@ import {
   TimeoutError,
   scrapeProfile
 } from "@/lib/apify";
-import { readCachedProfile, writeCachedProfile } from "@/lib/cache";
+import {
+  readCachedAnalysis,
+  readCachedProfile,
+  writeCachedAnalysis,
+  writeCachedProfile
+} from "@/lib/cache";
 import { getMockProfile } from "@/lib/mockData";
 import type { AnalyzeResponse, CreatorProfile, DataSource, Platform } from "@/lib/types";
 import { PlatformSchema } from "@/lib/types";
@@ -79,7 +84,15 @@ export async function POST(request: Request) {
         send<StatusEvent>("status", { message: analyzingMessage(platform) });
         send<StatusEvent>("status", { message: "Otto is thinking..." });
 
-        const analysis = await runManager(profile, dataSource);
+        const cachedAnalysis = await readCachedAnalysis(platform, handle, profile);
+        const analysis = cachedAnalysis
+          ? { ...cachedAnalysis.analysis, dataSource }
+          : await runManager(profile, dataSource);
+
+        if (!cachedAnalysis) {
+          await writeCachedAnalysis(platform, handle, profile, analysis);
+        }
+
         const response: AnalyzeResponse = {
           creator: profile,
           analysis,

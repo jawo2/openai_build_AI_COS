@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type {
   AnalysisResult,
@@ -35,7 +35,6 @@ type WeeklyGoalMetric = {
   explanation: string;
   label: string;
   status: "green" | "yellow" | "red";
-  statusLabel: string;
   weekOverWeek: string;
 };
 
@@ -43,6 +42,40 @@ type WeeklyGoalReport = {
   goal: string;
   metrics: WeeklyGoalMetric[];
   opportunity: string;
+};
+
+type BrandChatMessage = {
+  email?: {
+    body: string;
+    subject: string;
+  } | null;
+  role: "user" | "otto";
+  text: string;
+};
+
+type ContentPlanDraft = {
+  caption: string;
+  concept: string;
+  hook: string;
+  script: string;
+};
+
+type ContentChatMessage = {
+  plan?: ContentPlanDraft | null;
+  role: "user" | "otto";
+  text: string;
+};
+
+type PricingRateRow = {
+  label: string;
+  value: string;
+};
+
+type PricingChatMessage = {
+  note?: string | null;
+  rates?: PricingRateRow[] | null;
+  role: "user" | "otto";
+  text: string;
 };
 
 export function DashboardClient() {
@@ -158,17 +191,31 @@ export function DashboardClient() {
     );
   }
 
+  const showSpotlight = activeTab === "dashboard" && creator.platform === "tiktok";
+
   return (
-    <main className="min-h-screen bg-paper text-ink">
+    <main className="h-screen overflow-hidden bg-paper text-ink">
       <DashboardNav activeTab={activeTab} onTabChange={setActiveTab} />
 
-      <div className="grid gap-4 px-[58px] py-4">
+      <div
+        className={`grid h-[calc(100vh-56px)] gap-3 overflow-hidden px-[58px] py-3 ${
+          showSpotlight ? "grid-rows-[auto_minmax(0,1fr)]" : "grid-rows-[minmax(0,1fr)]"
+        }`}
+      >
+        {showSpotlight ? (
+          <TikTokSpotlight
+            analyzedVideoCount={creator.recentPosts.length}
+            creatorAvgViews={creator.avgViews}
+            breakoutPost={breakoutPost}
+          />
+        ) : null}
+
         {activeTab === "dashboard" ? (
           <DashboardTab
             analysis={analysis}
-            breakoutPost={breakoutPost}
             creator={creator}
             dataSource={result.dataSource}
+            onTabChange={setActiveTab}
           />
         ) : null}
 
@@ -342,29 +389,24 @@ function DashboardNav({
 
 function DashboardTab({
   analysis,
-  breakoutPost,
   creator,
-  dataSource
+  dataSource,
+  onTabChange
 }: {
   analysis: AnalysisResult;
-  breakoutPost: RecentPost | null;
   creator: AnalyzeResponse["creator"];
   dataSource: AnalyzeResponse["dataSource"];
+  onTabChange: (tab: ActiveTab) => void;
 }) {
   return (
-    <div className="grid gap-8">
-      <section className="grid gap-3 lg:grid-cols-[1fr_2fr]">
-        <CreatorSnapshot
-          creator={creator}
-          dataSource={dataSource}
-          goalRecommendation={analysis.recommendations[0] ?? null}
-        />
-        <PrioritiesPanel recommendations={analysis.recommendations} />
-      </section>
-      {creator.platform === "tiktok" ? (
-        <TikTokSpotlight creatorAvgViews={creator.avgViews} breakoutPost={breakoutPost} />
-      ) : null}
-    </div>
+    <section className="grid min-h-0 gap-3 lg:grid-cols-[1fr_2fr]">
+      <CreatorSnapshot
+        creator={creator}
+        dataSource={dataSource}
+        goalRecommendation={analysis.recommendations[0] ?? null}
+      />
+      <PrioritiesPanel recommendations={analysis.recommendations} onTabChange={onTabChange} />
+    </section>
   );
 }
 function BrandPipelineTab({
@@ -374,10 +416,27 @@ function BrandPipelineTab({
   creator: AnalyzeResponse["creator"];
   recommendation: Recommendation | null;
 }) {
+  const defaultBrand = getBrandName(recommendation);
+  const [selectedBrand, setSelectedBrand] = useState(defaultBrand);
+
+  useEffect(() => {
+    setSelectedBrand(defaultBrand);
+  }, [defaultBrand]);
+
   return (
-    <section className="grid gap-6 bg-[#f5f3ee] py-8 lg:grid-cols-[1fr_2fr]">
-      <BrandContextPanel creator={creator} recommendation={recommendation} />
-      <BrandPipelinePanel creator={creator} recommendation={recommendation} />
+    <section className="grid min-h-0 gap-3 lg:grid-cols-[1fr_2fr]">
+      <BrandContextPanel
+        creator={creator}
+        recommendation={recommendation}
+        selectedBrand={selectedBrand}
+        onBrandChange={setSelectedBrand}
+      />
+      <BrandPipelinePanel
+        creator={creator}
+        recommendation={recommendation}
+        selectedBrand={selectedBrand}
+        onBrandChange={setSelectedBrand}
+      />
     </section>
   );
 }
@@ -392,9 +451,13 @@ function ContentStudioTab({
   recommendation: Recommendation | null;
 }) {
   return (
-    <section className="grid gap-6 bg-[#f5f3ee] py-8 lg:grid-cols-[1fr_2fr]">
+    <section className="grid min-h-0 gap-3 lg:grid-cols-[1fr_2fr]">
       <ContentContextPanel breakoutPost={breakoutPost} creator={creator} recommendation={recommendation} />
-      <ContentStudioPanel breakoutPost={breakoutPost} recommendation={recommendation} />
+      <ContentStudioPanel
+        breakoutPost={breakoutPost}
+        creator={creator}
+        recommendation={recommendation}
+      />
     </section>
   );
 }
@@ -407,35 +470,46 @@ function PricingTab({
   recommendation: Recommendation | null;
 }) {
   return (
-    <section className="grid min-h-[640px] gap-6 bg-[#f5f3ee] py-8 lg:grid-cols-[1fr_2fr]">
+    <section className="grid min-h-0 gap-3 lg:grid-cols-[1fr_2fr]">
       <PricingContextPanel creator={creator} />
       <PricingPanel creator={creator} recommendation={recommendation} />
     </section>
   );
 }
 
-function PrioritiesPanel({ recommendations }: { recommendations: Recommendation[] }) {
+function PrioritiesPanel({
+  onTabChange,
+  recommendations
+}: {
+  onTabChange: (tab: ActiveTab) => void;
+  recommendations: Recommendation[];
+}) {
   return (
-    <section className="rounded-[8px] border border-ink/10 bg-white p-5">
-      <p className="text-sm font-semibold text-signal">Today</p>
-      <h1 className="text-[30px] font-semibold leading-9 tracking-tight">Today&apos;s Priorities</h1>
-      <div className="mt-5">
+    <section className="min-h-0 overflow-hidden rounded-[8px] border border-ink/10 bg-white p-4">
+      <h1 className="text-[28px] font-semibold leading-8 tracking-tight">
+        Today&apos;s Top Priorities
+      </h1>
+      <div className="mt-4">
         {recommendations.map((recommendation, index) => {
           const mission = getMissionDisplay(recommendation, index);
 
           return (
-            <article className="border-t border-ink/10 py-5" key={recommendation.title}>
+            <article className="border-t border-ink/10 py-4" key={recommendation.title}>
               <div className="flex items-start justify-between gap-5">
                 <div className="min-w-0">
                   <h2 className="text-lg font-semibold tracking-tight">
                     {recommendation.title}
                   </h2>
-                  <p className="mt-2 max-w-3xl text-sm leading-6 text-ink/58">
+                  <p className="mt-2 line-clamp-2 max-w-3xl text-sm leading-6 text-ink/58">
                     {recommendation.description}
                   </p>
-                  <p className="mt-1 text-sm uppercase text-ink/50">
-                    {getPriorityCta(recommendation.actionType)} →
-                  </p>
+                  <button
+                    className="mt-1 text-left text-sm text-ink/50 transition hover:text-ink"
+                    onClick={() => onTabChange(getTabForActionType(recommendation.actionType))}
+                    type="button"
+                  >
+                    Start →
+                  </button>
                 </div>
                 <span className="shrink-0 rounded-full bg-stone px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink">
                   {mission.priority}
@@ -461,23 +535,23 @@ function CreatorSnapshot({
   const report = getWeeklyGoalReport(creator, goalRecommendation, dataSource);
 
   return (
-    <section className="rounded-[8px] border border-ink/10 bg-white p-5">
-      <div className="flex items-center gap-3">
+    <section className="flex min-h-0 flex-col overflow-hidden rounded-[8px] border border-ink/10 bg-white p-4">
+      <div className="flex items-start gap-3">
         <Avatar creator={creator} />
         <div className="min-w-0">
-          <h1 className="truncate text-2xl font-semibold tracking-tight">@{creator.handle}</h1>
+          <h1 className="truncate text-xl font-semibold tracking-tight">@{creator.handle}</h1>
           <p className="text-sm capitalize text-ink/50">{creator.platform}</p>
           <p className="truncate text-sm capitalize text-ink/50">
             {formatCompactNumber(creator.followerCount)} followers
             {creator.contentCategories[0] ? ` | ${creator.contentCategories[0]}` : ""}
           </p>
         </div>
-      </div>
-
-      <div className="mt-6 grid gap-3">
-        <span className="w-fit rounded-full bg-ink/[0.06] px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink">
+        <span className="ml-auto mt-1 w-fit shrink-0 rounded-full bg-ink/[0.06] px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink">
           Weekly status
         </span>
+      </div>
+
+      <div className="mt-3 grid flex-1 content-between gap-2">
         <GoalCard report={report} />
         {report.metrics.map((metric) => (
           <GoalMetricCard key={metric.label} metric={metric} />
@@ -489,10 +563,10 @@ function CreatorSnapshot({
 
 function GoalCard({ report }: { report: WeeklyGoalReport }) {
   return (
-    <article className="rounded-[6px] bg-stone p-3">
+    <article className="rounded-[6px] bg-stone px-3 py-2">
       <p className="text-xs font-medium uppercase tracking-[0.14em] text-ink">This week&apos;s focus</p>
-      <h2 className="mt-1 text-lg font-semibold leading-6 tracking-tight">{report.goal}</h2>
-      <p className="mt-2 text-xs leading-5 text-ink/52">
+      <h2 className="mt-1 text-base font-semibold leading-5 tracking-tight">{report.goal}</h2>
+      <p className="mt-1 text-xs leading-5 text-ink/52">
         Best next move: {report.opportunity}
       </p>
     </article>
@@ -501,32 +575,43 @@ function GoalCard({ report }: { report: WeeklyGoalReport }) {
 
 function GoalMetricCard({ metric }: { metric: WeeklyGoalMetric }) {
   return (
-    <article className="rounded-[6px] bg-stone p-3">
+    <article className="rounded-[6px] bg-stone px-3 py-2">
       <div className="flex items-start justify-between gap-3">
         <p className="text-xs font-medium uppercase tracking-[0.14em] text-ink">
           {metric.label}
         </p>
-        <span
-          className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${
+      </div>
+      <div className="mt-1.5 flex items-center gap-2">
+        <p
+          className={`text-xl font-semibold tracking-tight ${
             metric.status === "green"
-              ? "bg-moss/12 text-moss"
+              ? "text-moss"
               : metric.status === "yellow"
-                ? "bg-[#f4ead2] text-[#9b7625]"
-                : "bg-signal/12 text-signal"
+                ? "text-[#9b7625]"
+                : "text-signal"
           }`}
         >
-          {metric.statusLabel}
+          {metric.currentValue}
+        </p>
+        <span className="group relative inline-flex">
+          <button
+            aria-label={`${metric.label} healthy target information`}
+            className="flex h-5 w-5 items-center justify-center rounded-full border border-ink/15 bg-white text-[11px] font-semibold text-ink/48 transition hover:border-ink/30 hover:text-ink focus:outline-none focus:ring-2 focus:ring-signal/30"
+            type="button"
+          >
+            i
+          </button>
+          <span className="pointer-events-none absolute bottom-7 left-full z-20 ml-2 hidden w-[300px] rounded-[6px] border border-ink/10 bg-white p-3 text-xs font-medium leading-5 text-ink/62 shadow-[0_12px_34px_rgba(17,17,17,0.14)] group-hover:block group-focus-within:block">
+            Healthy target: <span className="font-semibold text-ink">{metric.benchmark}</span>
+            <br />
+            {metric.benchmarkBasis}
+          </span>
         </span>
       </div>
-      <p className="mt-2 text-2xl font-semibold tracking-tight">{metric.currentValue}</p>
-      <p className="mt-1 text-xs font-semibold text-ink/56">
+      <p className="mt-0.5 text-xs font-semibold text-ink/56">
         {metric.weekOverWeek}
       </p>
-      <p className="mt-2 text-xs leading-5 text-ink/52">
-        Healthy target: <span className="font-semibold text-ink/70">{metric.benchmark}</span>
-      </p>
-      <p className="mt-1 text-xs leading-5 text-ink/42">{metric.benchmarkBasis}</p>
-      <p className="mt-2 text-xs leading-5 text-ink/62">
+      <p className="mt-0.5 text-xs leading-5 text-ink/62">
         {metric.explanation}
       </p>
     </article>
@@ -566,7 +651,6 @@ function getWeeklyGoalReport(
         "This tells you if people are liking and commenting enough to make this idea worth repeating.",
       label: "People reacting",
       status: getHealthStatus(currentEngagement, engagementBenchmark.value),
-      statusLabel: getHealthLabel(getHealthStatus(currentEngagement, engagementBenchmark.value)),
       weekOverWeek: formatWeekOverWeek(engagementAbsChange, currentEngagement, "pt")
     }
   ];
@@ -586,7 +670,6 @@ function getWeeklyGoalReport(
         "This tells you how many people your usual video reaches, so you know if the idea can grow.",
       label: "Views per video",
       status: getHealthStatus(avgViews, viewsBenchmark.value),
-      statusLabel: getHealthLabel(getHealthStatus(avgViews, viewsBenchmark.value)),
       weekOverWeek: formatWeekOverWeek(avgViews - viewsPrevious, avgViews, "views")
     });
 
@@ -600,7 +683,6 @@ function getWeeklyGoalReport(
           "This shows whether your best video was meaningfully better than your usual videos.",
         label: "Best video vs normal",
         status: getHealthStatus(breakoutMultiplier, 2),
-        statusLabel: getHealthLabel(getHealthStatus(breakoutMultiplier, 2)),
         weekOverWeek:
           dataSource === "live"
             ? "Measured from current scrape"
@@ -626,7 +708,6 @@ function getWeeklyGoalReport(
         "This tells you if people are actively liking and commenting on your posts.",
       label: "People interacting",
       status: getHealthStatus(avgInteractionRate, interactionRateBenchmark.value),
-      statusLabel: getHealthLabel(getHealthStatus(avgInteractionRate, interactionRateBenchmark.value)),
       weekOverWeek: formatWeekOverWeek(avgInteractionRate - interactionPrevious, avgInteractionRate, "pt")
     });
   }
@@ -697,27 +778,17 @@ function getInteractionBenchmark(market: string, niche: string) {
 }
 
 function getHealthStatus(current: number, benchmark: number): WeeklyGoalMetric["status"] {
-  if (current >= benchmark) {
+  const tolerance = Math.max(Math.abs(benchmark) * 0.001, 0.001);
+
+  if (current > benchmark + tolerance) {
     return "green";
   }
 
-  if (current >= benchmark * 0.85) {
+  if (Math.abs(current - benchmark) <= tolerance) {
     return "yellow";
   }
 
   return "red";
-}
-
-function getHealthLabel(status: WeeklyGoalMetric["status"]) {
-  if (status === "green") {
-    return "Looks good";
-  }
-
-  if (status === "yellow") {
-    return "Almost there";
-  }
-
-  return "Needs work";
 }
 
 function getTrendPercent(trend: string) {
@@ -766,104 +837,214 @@ function Avatar({ creator }: { creator: AnalyzeResponse["creator"] }) {
 
 function BrandContextPanel({
   creator,
-  recommendation
+  onBrandChange,
+  recommendation,
+  selectedBrand
 }: {
   creator: AnalyzeResponse["creator"];
+  onBrandChange: (brand: string) => void;
   recommendation: Recommendation | null;
+  selectedBrand: string;
 }) {
+  const brandOptions = getBrandOptions(recommendation);
+
   return (
-    <SidePanel>
-      <ProfileMini creator={creator} />
-      <PillLabel>Recommendations</PillLabel>
-      <SoftBlock eyebrow="Top niche">
-        <p className="text-lg font-semibold leading-6">
-          {creator.contentCategories.slice(0, 3).join(", ") || "Lifestyle, travel and creator"}
-          {" "}content perform best for you.
-        </p>
-      </SoftBlock>
-      <SoftBlock eyebrow="Brand size">
-        <p className="font-mono text-lg font-semibold leading-6">Mid-size & global brands</p>
-        <p className="mt-1 text-xs text-ink/36">
-          Your {creator.engagementRate}% engagement supports this tier
-        </p>
-      </SoftBlock>
-      <SoftBlock eyebrow="Top matches to research">
-        <div className="flex flex-wrap gap-2">
-          <BrandChip active>{getBrandName(recommendation)}</BrandChip>
-          <BrandChip>Adidas</BrandChip>
-          <BrandChip>Rappi</BrandChip>
+    <SidePanel contentClassName="flex h-full flex-col">
+      <div className="flex items-start gap-3">
+        <Avatar creator={creator} />
+        <div className="min-w-0">
+          <h1 className="truncate text-xl font-semibold tracking-tight">@{creator.handle}</h1>
+          <p className="text-sm text-ink/50">{formatPlatformName(creator.platform)}</p>
+          <p className="truncate text-sm text-ink/50">
+            {formatCompactNumber(creator.followerCount)} followers
+          </p>
         </div>
-      </SoftBlock>
-      <SoftBlock eyebrow="Campaign pricing">
-        <p className="font-mono text-lg font-semibold">S/ 520-650</p>
-        <p className="text-xs leading-4 text-ink/35">
-          per dedicated video, 27% above regional benchmark
-        </p>
-      </SoftBlock>
+        <span className="ml-auto mt-1 w-fit shrink-0 rounded-full bg-ink/[0.06] px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink">
+          Recommendations
+        </span>
+      </div>
+
+      <div className="mt-[34px] flex flex-1 flex-col justify-between gap-6 pb-14">
+        <SoftBlock eyebrow="Top niche">
+          <p className="text-base font-semibold leading-5 tracking-tight">
+            {creator.contentCategories.slice(0, 3).join(", ") || "Lifestyle, travel and creator"}
+            {" "}content perform best for you.
+          </p>
+          <p className="mt-1 text-xs leading-5 text-ink/52">
+            Use these themes as proof points when pitching brands.
+          </p>
+        </SoftBlock>
+        <SoftBlock eyebrow="Brand size">
+          <p className="text-base font-semibold leading-5 tracking-tight">Mid-size & global brands</p>
+          <p className="mt-1 text-xs leading-5 text-ink/52">
+            Your {creator.engagementRate}% engagement supports this tier
+          </p>
+        </SoftBlock>
+        <SoftBlock eyebrow="Top matches to research">
+          <div className="flex flex-col items-start gap-2">
+            {brandOptions.map((brand) => (
+              <BrandChip
+                active={brand === selectedBrand}
+                key={brand}
+                onClick={() => onBrandChange(brand)}
+              >
+                {brand}
+              </BrandChip>
+            ))}
+          </div>
+        </SoftBlock>
+        <SoftBlock eyebrow="Campaign pricing">
+          <p className="text-xl font-semibold tracking-tight">S/ 520-650</p>
+          <p className="text-xs leading-5 text-ink/52">
+            per dedicated video, 27% above regional benchmark
+          </p>
+        </SoftBlock>
+      </div>
     </SidePanel>
   );
 }
 
 function BrandPipelinePanel({
   creator,
-  recommendation
+  onBrandChange,
+  recommendation,
+  selectedBrand
 }: {
   creator: AnalyzeResponse["creator"];
+  onBrandChange: (brand: string) => void;
   recommendation: Recommendation | null;
+  selectedBrand: string;
 }) {
   const metric = recommendation?.supportingMetrics[0];
-  const brand = getBrandName(recommendation);
+  const emailDraft = buildBrandEmailDraft({
+    brand: selectedBrand,
+    creator,
+    metric
+  });
+  const currentEmail = `${emailDraft.subject}\n\n${emailDraft.body}`;
+
+  const [brandMessages, setBrandMessages] = useState<BrandChatMessage[]>([]);
+  const [isBrandChatSending, setIsBrandChatSending] = useState(false);
+
+  useEffect(() => {
+    setBrandMessages([]);
+    setIsBrandChatSending(false);
+  }, [selectedBrand]);
+
+  async function handleBrandChatSubmit(message: string) {
+    const trimmedMessage = message.trim();
+    const requestedBrand = detectRequestedBrand(trimmedMessage);
+    const nextBrand = requestedBrand ?? selectedBrand;
+
+    if (!trimmedMessage || !recommendation || isBrandChatSending) {
+      return;
+    }
+
+    if (requestedBrand && requestedBrand !== selectedBrand) {
+      onBrandChange(requestedBrand);
+      setIsBrandChatSending(false);
+      return;
+    }
+
+    setBrandMessages((messages) => [
+      ...messages,
+      { role: "user", text: trimmedMessage }
+    ]);
+    setIsBrandChatSending(true);
+
+    try {
+      const response = await fetch("/api/brand-chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          currentEmail:
+            requestedBrand
+              ? formatBrandEmailText(buildBrandEmailDraft({
+                  brand: nextBrand,
+                  creator,
+                  metric
+                }))
+              : currentEmail,
+          message: trimmedMessage,
+          profile: creator,
+          recommendation
+        })
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to send this message.");
+      }
+
+      setBrandMessages((messages) => [
+        ...messages,
+        {
+          email: payload.email ?? null,
+          role: "otto",
+          text: payload.reply ?? "I can help refine this outreach from here."
+        }
+      ]);
+    } catch (error) {
+      setBrandMessages((messages) => [
+        ...messages,
+        {
+          role: "otto",
+          text:
+            error instanceof Error
+              ? error.message
+              : "I could not process that request just now."
+        }
+      ]);
+    } finally {
+      setIsBrandChatSending(false);
+    }
+  }
 
   return (
-    <section className="rounded-[16px] border border-ink/10 bg-white p-8">
+    <section className="flex min-h-0 flex-col overflow-hidden rounded-[8px] border border-ink/10 bg-white p-4">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-signal">
         Opportunity
       </p>
-      <h1 className="mt-2 text-[28px] font-semibold leading-9">{brand}</h1>
-      <p className="mt-2 max-w-3xl font-serif text-lg italic leading-8 text-ink/82">
+      <h1 className="mt-1 text-[28px] font-semibold leading-8 tracking-tight">{selectedBrand}</h1>
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-ink/58">
         “Your strongest pitch is already visible in the data. I drafted the email so the outreach starts from proof, not a blank page.”
       </p>
 
-      <div className="mt-8">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-medium uppercase tracking-[0.16em] text-ink/32">
-            Drafted email
-          </p>
-          <button
-            className="flex h-8 w-8 items-center justify-center rounded-[8px] border border-ink/15 text-ink/55"
-            type="button"
-          >
-            ♢
-          </button>
-        </div>
-        <h2 className="mt-4 text-base font-semibold">
-          Lima creator, {formatCompactNumber(creator.followerCount)} {formatPlatformName(creator.platform)}, travel + culture content
-        </h2>
-        <div className="mt-4 max-w-3xl space-y-5 text-base leading-7 text-ink/62">
-          <p>Hi there,</p>
-          <p>
-            I&apos;m @{creator.handle}, a Lima-based creator with{" "}
-            {formatCompactNumber(creator.followerCount)} {formatPlatformName(creator.platform)} followers focused on{" "}
-            {creator.contentCategories.slice(0, 2).join(" and ") || "creator culture"}. My recent posts reached{" "}
-            <MetricHighlight>{metric?.value ?? `${creator.engagementRate}% engagement`}</MetricHighlight>{" "}
-            {metric?.trend ? `— ${metric.trend}` : "with strong engagement"}.
-          </p>
-          <p>
-            I&apos;d love to put together a short series showcasing {brand} to my audience across Peru and the wider LatAm market. Happy to send a full media kit.
-          </p>
-          <p>Would you be open to a quick call this week?</p>
-          <p>Best,<br />@{creator.handle}</p>
-        </div>
-        <div className="mt-5 flex gap-3">
-          <button className="rounded-[8px] border border-ink/15 px-5 py-3 text-sm font-semibold" type="button">
-            Copy email
-          </button>
-          <button className="rounded-[8px] bg-ink px-5 py-3 text-sm font-semibold text-white" type="button">
-            Mark as sent
-          </button>
-        </div>
+      <div className="mt-4 flex-1 overflow-y-auto border-t border-ink/10 pt-4 pr-2">
+        <EmailDraftBlock body={emailDraft.body} subject={emailDraft.subject} />
+        {brandMessages.length > 0 ? (
+          <div className="mt-4 grid gap-3 border-t border-ink/10 pt-4">
+          {brandMessages.map((message, index) => (
+            <div className="grid gap-3" key={`${message.role}-${index}`}>
+              <div
+                className={`rounded-[6px] px-3 py-2 text-sm leading-5 ${
+                  message.role === "user"
+                    ? "ml-auto max-w-[78%] bg-ink text-white"
+                    : "mr-auto max-w-[82%] bg-stone text-ink/70"
+                }`}
+              >
+                {message.text}
+              </div>
+              {message.role === "otto" && message.email ? (
+                <EmailDraftBlock body={message.email.body} subject={message.email.subject} />
+              ) : null}
+            </div>
+          ))}
+          </div>
+        ) : null}
       </div>
-      <PromptBar placeholder="Ask something — e.g. switch to Adidas, make it shorter" />
+      <PromptBar
+        className="mt-3"
+        disabled={!recommendation || isBrandChatSending}
+        onSubmit={handleBrandChatSubmit}
+        placeholder={
+          isBrandChatSending
+            ? "Otto is thinking..."
+            : "Ask something — e.g. switch to Adidas, make it shorter"
+        }
+      />
     </section>
   );
 }
@@ -878,113 +1059,245 @@ function ContentContextPanel({
   recommendation: Recommendation | null;
 }) {
   return (
-    <SidePanel>
+    <SidePanel contentClassName="flex h-full flex-col">
       <ProfileMini creator={creator} />
-      <PillLabel>Content insights</PillLabel>
-      <SoftBlock eyebrow="What worked">
-        <p className="text-base font-semibold leading-6">
-          {recommendation?.supportingMetrics[0]?.label ?? "Personal storytelling"}, up from the prior average.
-        </p>
-      </SoftBlock>
-      <SoftBlock eyebrow="Reference video">
-        <div className="flex items-center gap-3 rounded-[8px] border border-ink/10 bg-white px-2 py-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-[6px] bg-[#18383a] text-white">
-            ▶
-          </span>
-          <p className="text-sm font-semibold leading-5">
-            {breakoutPost ? "Breakout post" : "Reference post"} — watch on {formatPlatformName(creator.platform)}
+      <div className="mt-4 grid items-start gap-3">
+        <PillLabel>Content insights</PillLabel>
+        <SoftBlock eyebrow="What worked">
+          <p className="text-base font-semibold leading-5 tracking-tight">
+            {recommendation?.supportingMetrics[0]?.label ?? "Personal storytelling"}, up from the prior average.
           </p>
-        </div>
-      </SoftBlock>
-      <PillLabel>Trending now</PillLabel>
-      <SoftBlock eyebrow="Worth riding">
-        <p className="font-mono text-base font-semibold leading-6">
-          World Cup buzz, “Waka Waka” resurgence
-        </p>
-        <p className="mt-1 text-xs text-ink/36">Close to your niche — #MundialTikTok, #LimaPeru</p>
-      </SoftBlock>
+        </SoftBlock>
+        <SoftBlock eyebrow="Reference video">
+          <div className="flex items-center gap-3 rounded-[8px] border border-ink/10 bg-white px-2 py-2">
+            <span className="flex h-9 w-9 items-center justify-center rounded-[6px] bg-[#18383a] text-white">
+              ▶
+            </span>
+            <p className="text-sm font-semibold leading-5">
+              {breakoutPost ? "Breakout post" : "Reference post"} — watch on {formatPlatformName(creator.platform)}
+            </p>
+          </div>
+        </SoftBlock>
+      </div>
+      <div className="mt-9 grid items-start gap-3">
+        <PillLabel>Trending now</PillLabel>
+        <SoftBlock eyebrow="Worth riding">
+          <p className="text-base font-semibold leading-5 tracking-tight">
+            World Cup buzz, “Waka Waka” resurgence
+          </p>
+          <p className="mt-1 text-xs leading-5 text-ink/52">Close to your niche — #MundialTikTok, #LimaPeru</p>
+        </SoftBlock>
+      </div>
     </SidePanel>
   );
 }
 
 function ContentStudioPanel({
   breakoutPost,
+  creator,
   recommendation
 }: {
   breakoutPost: RecentPost | null;
+  creator: AnalyzeResponse["creator"];
   recommendation: Recommendation | null;
 }) {
+  const initialPlan = useMemo<ContentPlanDraft>(
+    () => ({
+      caption: `“${breakoutPost?.caption?.slice(0, 92) || "another Lima celebration I had to show you"}”`,
+      concept:
+        "Continue the strongest storytelling style, tied to a timely local culture moment.",
+      hook:
+        "Open on a local celebration already happening near you, then narrate your own connection to it.",
+      script:
+        "0:00-0:03 — Handheld shot walking into the celebration, no cuts.\n0:03-0:10 — Narrate why this moment matters to you.\n0:10-0:20 — Show 2-3 quick moments, natural sound, no music yet.\n0:20-0:25 — Land on a closing line, cut to black."
+    }),
+    [breakoutPost]
+  );
+  const [contentMessages, setContentMessages] = useState<ContentChatMessage[]>([]);
+  const [currentPlan, setCurrentPlan] = useState(initialPlan);
+  const [isContentSending, setIsContentSending] = useState(false);
+  const currentPlanText = formatContentPlanText(currentPlan);
+
+  useEffect(() => {
+    setCurrentPlan(initialPlan);
+    setContentMessages([]);
+  }, [initialPlan]);
+
+  async function handleContentSubmit(message: string) {
+    const trimmedMessage = message.trim();
+
+    if (!trimmedMessage || isContentSending) {
+      return;
+    }
+
+    setContentMessages((messages) => [
+      ...messages,
+      { role: "user", text: trimmedMessage }
+    ]);
+    setIsContentSending(true);
+
+    try {
+      const response = await fetch("/api/content-chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          currentPlan: currentPlanText,
+          message: trimmedMessage,
+          profile: creator,
+          recommendation
+        })
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to refine this plan.");
+      }
+
+      if (payload.plan) {
+        setCurrentPlan(payload.plan);
+      }
+
+      setContentMessages((messages) => [
+        ...messages,
+        {
+          plan: payload.plan ?? null,
+          role: "otto",
+          text: payload.reply ?? "I updated the plan."
+        }
+      ]);
+    } catch (error) {
+      setContentMessages((messages) => [
+        ...messages,
+        {
+          role: "otto",
+          text:
+            error instanceof Error
+              ? error.message
+              : "I could not refine that plan just now."
+        }
+      ]);
+    } finally {
+      setIsContentSending(false);
+    }
+  }
+
   return (
-    <section className="rounded-[16px] border border-ink/10 bg-white p-8">
+    <section className="flex min-h-0 flex-col overflow-hidden rounded-[8px] border border-ink/10 bg-white p-4">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-signal">Studio</p>
-      <h1 className="mt-2 text-[26px] font-semibold leading-8">Build on your breakout</h1>
-      <p className="mt-2 max-w-3xl font-serif text-lg italic leading-8 text-ink/82">
+      <h1 className="mt-1 text-[28px] font-semibold leading-8 tracking-tight">Build on your breakout</h1>
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-ink/58">
         “{recommendation?.reasoning[0] ?? "Your breakout post shows the clearest repeatable content signal in the profile."}”
       </p>
 
-      <div className="mt-8">
+      <div className="mt-4 flex-1 overflow-y-auto border-t border-ink/10 pt-4 pr-2">
         <p className="text-xs font-medium uppercase tracking-[0.16em] text-ink/32">
           This week&apos;s content plan
         </p>
         <PlanBlock title="Concept">
-          Continue the strongest storytelling style, tied to a timely local culture moment.
+          {currentPlan.concept}
         </PlanBlock>
         <PlanBlock title="Hook">
-          Open on a local celebration already happening near you, then narrate your own connection to it.
+          {currentPlan.hook}
         </PlanBlock>
         <PlanBlock title="Script">
-          0:00-0:03 — Handheld shot walking into the celebration, no cuts.<br />
-          0:03-0:10 — Narrate why this moment matters to you.<br />
-          0:10-0:20 — Show 2-3 quick moments, natural sound, no music yet.<br />
-          0:20-0:25 — Land on a closing line, cut to black.
+          {currentPlan.script.split("\n").map((line) => (
+            <span className="block" key={line}>{line}</span>
+          ))}
         </PlanBlock>
         <PlanBlock title="Caption">
-          “{breakoutPost?.caption?.slice(0, 92) || "another Lima celebration I had to show you"}”
+          {currentPlan.caption}
         </PlanBlock>
+
+        {contentMessages.length > 0 ? (
+          <div className="mt-4 grid gap-3 border-t border-ink/10 pt-4">
+            {contentMessages.map((message, index) => (
+              <div className="grid gap-3" key={`${message.role}-${index}`}>
+                <div
+                  className={`rounded-[6px] px-3 py-2 text-sm leading-5 ${
+                    message.role === "user"
+                      ? "ml-auto max-w-[78%] bg-ink text-white"
+                      : "mr-auto max-w-[82%] bg-stone text-ink/70"
+                  }`}
+                >
+                  {message.text}
+                </div>
+                {message.role === "otto" && message.plan ? (
+                  <ContentPlanBlock plan={message.plan} />
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
 
-      <div className="mt-8">
-        <p className="mb-3 text-xs font-medium uppercase tracking-[0.16em] text-ink/32">
+      <div className="mt-3 border-t border-ink/10 pt-3">
+        <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-ink/32">
           Refine this plan
         </p>
         <div className="flex flex-wrap gap-2">
           {["More hook options", "Different trend angle", "Shorten the script", "More caption options"].map((action) => (
-            <button className="rounded-full border border-ink/12 px-4 py-2 text-sm text-ink/58" key={action} type="button">
+            <button
+              className="rounded-full border border-ink/12 px-4 py-2 text-sm text-ink/58 transition hover:border-ink/30 hover:text-ink"
+              disabled={isContentSending}
+              key={action}
+              onClick={() => handleContentSubmit(action)}
+              type="button"
+            >
               {action}
             </button>
           ))}
         </div>
       </div>
-      <PromptBar placeholder="e.g. make the hook punchier, try a shorter script" />
+      <PromptBar
+        className="mt-3"
+        disabled={isContentSending}
+        onSubmit={handleContentSubmit}
+        placeholder={
+          isContentSending
+            ? "Otto is thinking..."
+            : "e.g. make the hook punchier, try a shorter script"
+        }
+      />
     </section>
   );
 }
 
 function PricingContextPanel({ creator }: { creator: AnalyzeResponse["creator"] }) {
   return (
-    <SidePanel>
+    <SidePanel contentClassName="flex h-full flex-col">
       <ProfileMini creator={creator} />
-      <PillLabel>What justifies your rate</PillLabel>
-      <SoftBlock eyebrow="Regional benchmark">
-        <p className="text-base font-semibold leading-6">
-          S/ 350-600 per video for 100-150K follower LatAm creators.
-        </p>
-      </SoftBlock>
-      <SoftBlock eyebrow="Your engagement">
-        <div className="flex items-center justify-between">
-          <p className="font-mono text-xl font-semibold">{creator.engagementRate}%</p>
-          <span className="rounded-full bg-moss/10 px-3 py-1 text-xs font-semibold text-moss">
-            ↑ 0.57pt
-          </span>
-        </div>
-        <p className="mt-3 rounded-[6px] bg-[#f4ead2] px-3 py-2 text-xs leading-4 text-[#9b7625]">
-          27% above regional benchmark
-        </p>
-      </SoftBlock>
-      <SoftBlock eyebrow="Account tier">
-        <p className="font-mono text-lg font-semibold leading-6">Mid-size & global brands</p>
-        <p className="text-xs text-ink/35">Supported by your engagement level</p>
-      </SoftBlock>
+      <div className="mt-4 grid items-start gap-3">
+        <PillLabel>What justifies your rate</PillLabel>
+        <SoftBlock eyebrow="Regional benchmark">
+          <p className="text-base font-semibold leading-5 tracking-tight">
+            S/ 350-600 per video for 100-150K follower LatAm creators.
+          </p>
+          <p className="mt-1 text-xs leading-5 text-ink/52">
+            Use this as the floor, then adjust for your actual views and engagement.
+          </p>
+        </SoftBlock>
+        <SoftBlock eyebrow="Your engagement">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xl font-semibold tracking-tight">{creator.engagementRate}%</p>
+            <span className="rounded-full bg-moss/10 px-3 py-1 text-xs font-semibold text-moss">
+              ↑ 0.57pt
+            </span>
+          </div>
+          <p className="mt-2 rounded-[6px] bg-[#f4ead2] px-3 py-2 text-xs leading-4 text-[#9b7625]">
+            27% above regional benchmark
+          </p>
+        </SoftBlock>
+      </div>
+      <div className="mt-9 grid items-start gap-3">
+        <SoftBlock eyebrow="Account tier">
+          <p className="text-base font-semibold leading-5 tracking-tight">Mid-size & global brands</p>
+          <p className="mt-1 text-xs leading-5 text-ink/52">
+            Supported by your engagement level
+          </p>
+        </SoftBlock>
+      </div>
     </SidePanel>
   );
 }
@@ -996,53 +1309,189 @@ function PricingPanel({
   creator: AnalyzeResponse["creator"];
   recommendation: Recommendation | null;
 }) {
-  const rates = getRateRows(creator);
+  const baseRates = useMemo(() => getRateRows(creator), [creator]);
+  const [rates, setRates] = useState<PricingRateRow[]>(baseRates);
+  const [pricingMessages, setPricingMessages] = useState<PricingChatMessage[]>([]);
+  const [isPricingSending, setIsPricingSending] = useState(false);
+
+  useEffect(() => {
+    setRates(baseRates);
+    setPricingMessages([]);
+    setIsPricingSending(false);
+  }, [baseRates]);
+
+  async function handlePricingSubmit(message: string) {
+    const trimmedMessage = message.trim();
+
+    if (!trimmedMessage || isPricingSending) {
+      return;
+    }
+
+    setPricingMessages((messages) => [
+      ...messages,
+      { role: "user", text: trimmedMessage }
+    ]);
+    setIsPricingSending(true);
+
+    try {
+      const response = await fetch("/api/pricing-chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          currentRates: rates,
+          message: trimmedMessage,
+          profile: creator,
+          recommendation
+        })
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to update pricing.");
+      }
+
+      if (payload.rates) {
+        setRates(payload.rates);
+      }
+
+      setPricingMessages((messages) => [
+        ...messages,
+        {
+          note: payload.note ?? null,
+          rates: payload.rates ?? null,
+          role: "otto",
+          text: payload.reply ?? "I updated the pricing guidance."
+        }
+      ]);
+    } catch (error) {
+      setPricingMessages((messages) => [
+        ...messages,
+        {
+          role: "otto",
+          text:
+            error instanceof Error
+              ? error.message
+              : "I could not update pricing just now."
+        }
+      ]);
+    } finally {
+      setIsPricingSending(false);
+    }
+  }
 
   return (
-    <section className="rounded-[16px] border border-ink/10 bg-white p-7">
+    <section className="flex min-h-0 flex-col overflow-hidden rounded-[8px] border border-ink/10 bg-white p-4">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-signal">Pricing</p>
-      <h1 className="mt-2 text-[26px] font-semibold leading-8">Your rate card</h1>
-      <p className="mt-2 text-sm text-ink/50">
+      <h1 className="mt-1 text-[28px] font-semibold leading-8 tracking-tight">Your rate card</h1>
+      <p className="mt-2 text-sm leading-6 text-ink/58">
         Base rates — mid-size brand, organic, standard timeline
       </p>
 
-      <div className="mt-4 grid gap-2">
-        {rates.map((row) => (
-          <div
-            className="flex items-center justify-between rounded-[8px] border border-ink/10 bg-stone px-4 py-3 text-sm"
-            key={row.label}
-          >
-            <span>{row.label}</span>
-            <span className="font-mono font-semibold">S/ {row.value}</span>
+      <div className="mt-4 flex-1 overflow-y-auto border-t border-ink/10 pt-4 pr-2">
+        <RateRows rows={rates} />
+        {recommendation ? (
+          <p className="mt-4 max-w-3xl text-sm leading-6 text-ink/58">
+            {recommendation.reasoning[0]}
+          </p>
+        ) : null}
+        {pricingMessages.length > 0 ? (
+          <div className="mt-4 grid gap-3 border-t border-ink/10 pt-4">
+            {pricingMessages.map((message, index) => (
+              <div className="grid gap-3" key={`${message.role}-${index}`}>
+                <div
+                  className={`rounded-[6px] px-3 py-2 text-sm leading-5 ${
+                    message.role === "user"
+                      ? "ml-auto max-w-[78%] bg-ink text-white"
+                      : "mr-auto max-w-[82%] bg-stone text-ink/70"
+                  }`}
+                >
+                  {message.text}
+                </div>
+                {message.role === "otto" && message.rates ? (
+                  <PricingUpdateBlock note={message.note ?? null} rows={message.rates} />
+                ) : null}
+              </div>
+            ))}
           </div>
-        ))}
+        ) : null}
       </div>
-      <PromptBar placeholder="e.g. what if Coca-Cola wants a paid ad for their social media?" />
-      {recommendation ? (
-        <p className="mt-4 max-w-3xl text-sm leading-6 text-ink/52">
-          {recommendation.reasoning[0]}
-        </p>
-      ) : null}
+      <PromptBar
+        className="mt-3"
+        disabled={isPricingSending}
+        onSubmit={handlePricingSubmit}
+        placeholder={
+          isPricingSending
+            ? "Otto is thinking..."
+            : "e.g. what if Coca-Cola wants a paid ad for their social media?"
+        }
+      />
     </section>
   );
 }
 
-function SidePanel({ children }: { children: React.ReactNode }) {
+function RateRows({ rows }: { rows: PricingRateRow[] }) {
   return (
-    <aside className="rounded-[16px] border border-ink/10 bg-white p-6">
-      <div className="grid gap-3">{children}</div>
+    <div className="grid gap-2">
+      {rows.map((row) => (
+        <div
+          className="flex items-center justify-between gap-4 rounded-[8px] border border-ink/10 bg-stone px-4 py-3 text-sm"
+          key={row.label}
+        >
+          <span>{row.label}</span>
+          <span className="shrink-0 font-semibold">S/ {row.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PricingUpdateBlock({
+  note,
+  rows
+}: {
+  note: string | null;
+  rows: PricingRateRow[];
+}) {
+  return (
+    <article>
+      <p className="text-xs font-medium uppercase tracking-[0.16em] text-ink/32">
+        Updated rate card
+      </p>
+      {note ? (
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-ink/58">{note}</p>
+      ) : null}
+      <div className="mt-3">
+        <RateRows rows={rows} />
+      </div>
+    </article>
+  );
+}
+
+function SidePanel({
+  children,
+  contentClassName = "gap-2"
+}: {
+  children: React.ReactNode;
+  contentClassName?: string;
+}) {
+  return (
+    <aside className="min-h-0 overflow-hidden rounded-[8px] border border-ink/10 bg-white p-4">
+      <div className={`grid ${contentClassName}`}>{children}</div>
     </aside>
   );
 }
 
 function ProfileMini({ creator }: { creator: AnalyzeResponse["creator"] }) {
   return (
-    <div className="mb-4 flex items-center gap-3">
+    <div className="mb-5 flex items-start gap-3">
       <Avatar creator={creator} />
       <div className="min-w-0">
-        <h2 className="truncate text-lg font-semibold">@{creator.handle}</h2>
-        <p className="text-sm text-ink/50">
-          {formatPlatformName(creator.platform)} · {formatCompactNumber(creator.followerCount)} followers
+        <h2 className="truncate text-xl font-semibold tracking-tight">@{creator.handle}</h2>
+        <p className="text-sm text-ink/50">{formatPlatformName(creator.platform)}</p>
+        <p className="truncate text-sm text-ink/50">
+          {formatCompactNumber(creator.followerCount)} followers
         </p>
       </div>
     </div>
@@ -1051,7 +1500,7 @@ function ProfileMini({ creator }: { creator: AnalyzeResponse["creator"] }) {
 
 function PillLabel({ children }: { children: React.ReactNode }) {
   return (
-    <span className="w-fit rounded-full bg-ink/[0.06] px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-ink/55">
+    <span className="inline-flex w-fit items-center rounded-full bg-ink/[0.06] px-3 py-1 text-xs font-semibold uppercase leading-none tracking-[0.14em] text-ink">
       {children}
     </span>
   );
@@ -1065,8 +1514,8 @@ function SoftBlock({
   eyebrow: string;
 }) {
   return (
-    <article className="rounded-[12px] bg-stone p-4">
-      <p className="mb-2 text-xs font-medium uppercase tracking-[0.12em] text-ink/32">
+    <article className="rounded-[6px] bg-stone px-3 py-2">
+      <p className="mb-1 text-xs font-medium uppercase tracking-[0.14em] text-ink">
         {eyebrow}
       </p>
       {children}
@@ -1076,24 +1525,92 @@ function SoftBlock({
 
 function BrandChip({
   active = false,
-  children
+  children,
+  onClick
 }: {
   active?: boolean;
   children: React.ReactNode;
+  onClick: () => void;
 }) {
   return (
-    <span
-      className={`rounded-full border px-3 py-1 text-sm ${
-        active ? "border-signal bg-signal/5 font-semibold text-signal" : "border-ink/15 bg-white text-ink/58"
+    <button
+      className={`w-fit rounded-full border px-3 py-1 text-left text-sm transition ${
+        active
+          ? "border-signal bg-signal/5 font-semibold text-signal"
+          : "border-ink/15 bg-white text-ink/58 hover:border-ink/30 hover:text-ink"
       }`}
+      onClick={onClick}
+      type="button"
     >
-      • {children}
-    </span>
+      {children}
+    </button>
   );
 }
 
 function MetricHighlight({ children }: { children: React.ReactNode }) {
   return <mark className="rounded bg-[#f4dfad] px-1 text-[#a87500]">{children}</mark>;
+}
+
+function EmailDraftBlock({
+  body,
+  subject
+}: {
+  body: string;
+  subject: string;
+}) {
+  const [copyLabel, setCopyLabel] = useState("Copy");
+
+  async function copyBody() {
+    try {
+      await navigator.clipboard.writeText(body);
+      setCopyLabel("Copied");
+      window.setTimeout(() => setCopyLabel("Copy"), 1400);
+    } catch {
+      setCopyLabel("Failed");
+      window.setTimeout(() => setCopyLabel("Copy"), 1400);
+    }
+  }
+
+  return (
+    <article>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium uppercase tracking-[0.16em] text-ink/32">
+          Drafted email
+        </p>
+        <button
+          className="rounded-[6px] border border-ink/15 px-3 py-1.5 text-xs font-semibold text-ink/55 transition hover:border-ink/30 hover:text-ink"
+          onClick={copyBody}
+          type="button"
+        >
+          {copyLabel}
+        </button>
+      </div>
+      <h2 className="mt-3 text-base font-semibold">{subject}</h2>
+      <div className="mt-3 max-w-3xl space-y-3 text-sm leading-6 text-ink/62">
+        {body.split(/\n{2,}/).map((paragraph) => (
+          <p key={paragraph}>{paragraph}</p>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function ContentPlanBlock({ plan }: { plan: ContentPlanDraft }) {
+  return (
+    <article>
+      <p className="text-xs font-medium uppercase tracking-[0.16em] text-ink/32">
+        Updated content plan
+      </p>
+      <PlanBlock title="Concept">{plan.concept}</PlanBlock>
+      <PlanBlock title="Hook">{plan.hook}</PlanBlock>
+      <PlanBlock title="Script">
+        {plan.script.split("\n").map((line) => (
+          <span className="block" key={line}>{line}</span>
+        ))}
+      </PlanBlock>
+      <PlanBlock title="Caption">{plan.caption}</PlanBlock>
+    </article>
+  );
 }
 
 function PlanBlock({
@@ -1104,31 +1621,63 @@ function PlanBlock({
   title: string;
 }) {
   return (
-    <div className="mt-5 text-base leading-7 text-ink/58">
+    <div className="mt-4 text-sm leading-6 text-ink/58">
       <h2 className="mb-1 font-semibold text-ink/62">{title}</h2>
       <p>{children}</p>
     </div>
   );
 }
 
-function PromptBar({ placeholder }: { placeholder: string }) {
+function PromptBar({
+  className = "mt-4",
+  disabled = false,
+  onSubmit,
+  placeholder
+}: {
+  className?: string;
+  disabled?: boolean;
+  onSubmit?: (message: string) => void;
+  placeholder: string;
+}) {
+  const [value, setValue] = useState("");
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!value.trim() || disabled) {
+      return;
+    }
+
+    onSubmit?.(value);
+    setValue("");
+  }
+
   return (
-    <div className="mt-7 flex gap-2 border-t border-ink/10 pt-5">
+    <form className={`${className} flex gap-2 border-t border-ink/10 pt-4`} onSubmit={handleSubmit}>
       <input
-        className="h-12 flex-1 rounded-[8px] border border-ink/10 px-4 text-sm outline-none placeholder:text-ink/32 focus:border-signal"
+        className="h-10 flex-1 rounded-[6px] border border-ink/10 px-3 text-sm outline-none placeholder:text-ink/32 focus:border-signal"
+        disabled={disabled}
+        onChange={(event) => setValue(event.target.value)}
         placeholder={placeholder}
+        value={value}
       />
-      <button className="h-12 w-12 rounded-[8px] bg-ink text-xl font-semibold text-white" type="button">
+      <button
+        className="h-10 w-10 rounded-[6px] bg-ink text-lg font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+        disabled={disabled || !value.trim()}
+        type="submit"
+      >
         →
       </button>
-    </div>
+    </form>
   );
 }
 
 function TikTokSpotlight({
+  analyzedVideoCount,
   breakoutPost,
   creatorAvgViews
 }: {
+  analyzedVideoCount: number;
   breakoutPost: RecentPost | null;
   creatorAvgViews: number | null;
 }) {
@@ -1137,20 +1686,26 @@ function TikTokSpotlight({
   }
 
   return (
-    <section className="grid gap-4 rounded-[8px] bg-[#101010] p-5 text-white md:grid-cols-[1fr_280px]">
-      <div>
-        <p className="text-sm font-semibold text-white">
-          Last week&apos;s top performing video
+    <section className="grid min-h-[58px] items-center gap-3 rounded-[8px] bg-[#101010] px-4 py-1.5 text-white md:grid-cols-[1fr_auto]">
+      <div className="min-w-0">
+        <p className="text-xs font-semibold text-white/82">
+          Last week&apos;s top video
         </p>
-        <h2 className="mt-2 text-3xl font-semibold tracking-tight text-white">
-          {formatNumber(breakoutPost.views ?? 0)} views
-        </h2>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-white/80">
-          Above the account average of {formatNumber(creatorAvgViews ?? 0)} views. Use this as the
-          reference proof for today&apos;s execution plan.
-        </p>
+        <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <h2 className="text-2xl font-semibold tracking-tight text-white">
+            {formatNumber(breakoutPost.views ?? 0)} views
+          </h2>
+          <p className="text-sm font-semibold text-white/78">
+            {breakoutPost.engagementRate}% engagement
+          </p>
+          <p className="text-sm text-white/58">
+            Recent Avg Views: {formatNumber(creatorAvgViews ?? 0)} ({analyzedVideoCount} latest videos)
+          </p>
+        </div>
       </div>
-      <PostThumbnail dark post={breakoutPost} />
+      <div className="justify-self-end">
+        <PostThumbnail dark hideText post={breakoutPost} />
+      </div>
     </section>
   );
 }
@@ -1169,28 +1724,73 @@ function InsightCard({ insight }: { insight: Insight }) {
   );
 }
 
-function PostThumbnail({ dark = false, post }: { dark?: boolean; post: RecentPost }) {
+function PostThumbnail({
+  dark = false,
+  hideText = false,
+  post
+}: {
+  dark?: boolean;
+  hideText?: boolean;
+  post: RecentPost;
+}) {
   return (
-    <article className={`grid grid-cols-[76px_1fr] gap-3 rounded-[6px] p-2 ${dark ? "bg-transparent" : "bg-stone"}`}>
+    <article
+      className={`grid rounded-[6px] p-2 ${
+        dark
+          ? hideText
+            ? "grid-cols-[40px_auto] items-start gap-2 bg-transparent"
+            : "grid-cols-[48px_1fr] gap-3 bg-transparent"
+          : "grid-cols-[76px_1fr] gap-3 bg-stone"
+      }`}
+    >
       {post.thumbnailUrl ? (
         <img
           alt=""
-          className="h-[92px] w-[76px] rounded-[6px] object-cover"
+          className={`${dark ? "h-[46px] w-[40px]" : "h-[92px] w-[76px]"} rounded-[6px] object-cover`}
           src={post.thumbnailUrl}
         />
       ) : (
-        <div className="h-[92px] w-[76px] rounded-[6px] bg-ink/10" />
+        <div className={`${dark ? "h-[46px] w-[40px]" : "h-[92px] w-[76px]"} rounded-[6px] bg-ink/10`} />
       )}
-      <div className="min-w-0 py-1">
-        <p className={`line-clamp-2 text-sm font-medium ${dark ? "text-white" : "text-ink"}`}>
-          {post.caption || post.postType}
-        </p>
-        <p className={`mt-2 text-xs ${dark ? "text-white/75" : "text-ink/50"}`}>
-          {post.views !== null ? `${formatNumber(post.views)} views · ` : ""}
-          {post.engagementRate}% engagement
-        </p>
-      </div>
+      {hideText ? (
+        <PostExternalLink postUrl={post.postUrl ?? null} />
+      ) : (
+        <div className="min-w-0 py-1">
+          <p className={`line-clamp-2 font-medium ${dark ? "text-xs text-white" : "text-sm text-ink"}`}>
+            {post.caption || post.postType}
+          </p>
+          <p className={`mt-2 text-xs ${dark ? "text-white/75" : "text-ink/50"}`}>
+            {post.views !== null ? `${formatNumber(post.views)} views · ` : ""}
+            {post.engagementRate}% engagement
+          </p>
+        </div>
+      )}
     </article>
+  );
+}
+
+function PostExternalLink({ postUrl }: { postUrl: string | null }) {
+  if (!postUrl) {
+    return (
+      <span
+        aria-label="Video link unavailable"
+        className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 text-sm font-semibold text-white/24"
+      >
+        ↗
+      </span>
+    );
+  }
+
+  return (
+    <a
+      aria-label="Open video in a new tab"
+      className="flex h-7 w-7 items-center justify-center rounded-full border border-white/16 text-sm font-semibold text-white/70 transition hover:border-white/35 hover:text-white"
+      href={postUrl}
+      rel="noreferrer"
+      target="_blank"
+    >
+      ↗
+    </a>
   );
 }
 
@@ -1323,26 +1923,82 @@ function getRecommendationForTab(recommendations: Recommendation[], activeTab: A
   return recommendations.find((recommendation) => recommendation.actionType === actionTypeByTab[activeTab]) ?? null;
 }
 
-function getPriorityCta(actionType: Recommendation["actionType"]) {
+function getTabForActionType(actionType: Recommendation["actionType"]): ActiveTab {
   if (actionType === "outreach") {
-    return "View full strategy";
+    return "outreach";
   }
 
   if (actionType === "content") {
-    return "View ideas";
+    return "content";
   }
 
-  return "View full suggestions and pricing table";
+  return "pricing";
 }
 
 function getBrandName(recommendation: Recommendation | null) {
   const title = recommendation?.title ?? "";
-  const knownBrands = ["LATAM Airlines", "Adidas", "Rappi", "Nike", "Coca-Cola"];
-  const matchedBrand = knownBrands.find((brand) =>
+  const matchedBrand = getKnownBrands().find((brand) =>
     title.toLowerCase().includes(brand.toLowerCase().split(" ")[0])
   );
 
   return matchedBrand ?? "LATAM Airlines";
+}
+
+function getBrandOptions(recommendation: Recommendation | null) {
+  const preferredBrand = getBrandName(recommendation);
+
+  return [preferredBrand, "Adidas", "Rappi"].filter(
+    (brand, index, brands) => brands.indexOf(brand) === index
+  );
+}
+
+function getKnownBrands() {
+  return ["LATAM Airlines", "Adidas", "Rappi", "Nike", "Coca-Cola"];
+}
+
+function detectRequestedBrand(message: string) {
+  const normalizedMessage = message.toLowerCase();
+
+  return getKnownBrands().find((brand) =>
+    normalizedMessage.includes(brand.toLowerCase().split(" ")[0])
+  ) ?? null;
+}
+
+function buildBrandEmailDraft({
+  brand,
+  creator,
+  metric
+}: {
+  brand: string;
+  creator: AnalyzeResponse["creator"];
+  metric: Recommendation["supportingMetrics"][number] | undefined;
+}) {
+  const subject = `Lima creator, ${formatCompactNumber(creator.followerCount)} ${formatPlatformName(creator.platform)}, travel + culture content`;
+  const body = `Hi there,
+
+I'm @${creator.handle}, a Lima-based creator with ${formatCompactNumber(creator.followerCount)} ${formatPlatformName(creator.platform)} followers focused on ${creator.contentCategories.slice(0, 2).join(" and ") || "creator culture"}. My recent posts reached ${metric?.value ?? `${creator.engagementRate}% engagement`} ${metric?.trend ? `— ${metric.trend}` : "with strong engagement"}.
+
+I'd love to put together a short series showcasing ${brand} to my audience across Peru and the wider LatAm market. Happy to send a full media kit.
+
+Would you be open to a quick call this week?
+
+Best,
+@${creator.handle}`;
+
+  return { body, subject };
+}
+
+function formatBrandEmailText(email: { body: string; subject: string }) {
+  return `${email.subject}\n\n${email.body}`;
+}
+
+function formatContentPlanText(plan: ContentPlanDraft) {
+  return [
+    `Concept: ${plan.concept}`,
+    `Hook: ${plan.hook}`,
+    `Script: ${plan.script}`,
+    `Caption: ${plan.caption}`
+  ].join("\n\n");
 }
 
 function formatPlatformName(platform: Platform) {

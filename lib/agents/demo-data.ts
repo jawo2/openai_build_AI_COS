@@ -21,6 +21,7 @@ export const demoCreatorProfile: CreatorProfile = {
       caption: "Dance rehearsal with a branded transition.",
       isSponsored: true,
       thumbnailUrl: null,
+      postUrl: null,
       engagementRate: 8.34,
       isBreakout: false
     },
@@ -34,6 +35,7 @@ export const demoCreatorProfile: CreatorProfile = {
       caption: "Behind the scenes from set.",
       isSponsored: false,
       thumbnailUrl: null,
+      postUrl: null,
       engagementRate: 7.93,
       isBreakout: false
     }

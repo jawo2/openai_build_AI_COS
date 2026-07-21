@@ -17,6 +17,7 @@ export const RecentPostSchema = z
     caption: z.string(),
     isSponsored: z.boolean(),
     thumbnailUrl: z.string().url().nullable(),
+    postUrl: z.string().url().nullable().optional(),
     engagementRate: z.number().nonnegative(),
     isBreakout: z.boolean()
   })

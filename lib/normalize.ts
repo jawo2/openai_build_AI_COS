@@ -21,6 +21,7 @@ export function normalizeTikTok(raw: unknown): CreatorProfile {
     const comments = numberFrom(item.commentCount) ?? 0;
     const shares = numberFrom(item.shareCount);
     const caption = stringFrom(item.text) ?? "";
+    const id = stringFrom(item.id) ?? stringFrom(item.videoId) ?? stringFrom(item.awemeId);
 
     return {
       views,
@@ -35,6 +36,12 @@ export function normalizeTikTok(raw: unknown): CreatorProfile {
       caption,
       isSponsored: hasSponsorSignal(caption),
       thumbnailUrl: stringFrom(videoMeta?.coverUrl) ?? stringFrom(videoMeta?.originalCoverUrl),
+      postUrl:
+        stringFrom(item.webVideoUrl) ??
+        stringFrom(item.url) ??
+        stringFrom(item.videoUrl) ??
+        stringFrom(item.shareUrl) ??
+        tiktokVideoUrl(handle, id),
       engagementRate: calculateViewEngagementRate(likes, comments, shares, views),
       isBreakout: avgViews !== null && views !== null && views > avgViews * 2
     } satisfies RecentPost;
@@ -56,6 +63,14 @@ export function normalizeTikTok(raw: unknown): CreatorProfile {
     estimatedMetrics: false,
     recentPosts
   };
+}
+
+function tiktokVideoUrl(handle: string, id: string | null): string | null {
+  if (!handle || !id) {
+    return null;
+  }
+
+  return `https://www.tiktok.com/@${handle}/video/${id}`;
 }
 
 export function normalizeInstagram(profile: unknown, posts: unknown): CreatorProfile {
@@ -83,6 +98,11 @@ export function normalizeInstagram(profile: unknown, posts: unknown): CreatorPro
         stringFrom(item.displayUrl) ??
         stringFrom(item.thumbnailUrl) ??
         firstString(item.images),
+      postUrl:
+        stringFrom(item.url) ??
+        stringFrom(item.postUrl) ??
+        stringFrom(item.permalink) ??
+        instagramShortcodeUrl(item),
       engagementRate: calculateFollowerEngagementRate(likes, comments, followerCount),
       isBreakout: false
     } satisfies RecentPost;
@@ -219,6 +239,12 @@ function instagramPostType(item: RawRecord): PostType {
   }
 
   return "image";
+}
+
+function instagramShortcodeUrl(item: RawRecord): string | null {
+  const shortcode = stringFrom(item.shortCode) ?? stringFrom(item.shortcode);
+
+  return shortcode ? `https://www.instagram.com/p/${shortcode}/` : null;
 }
 
 function hasSponsorSignal(caption: string): boolean {

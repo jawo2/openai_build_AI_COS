@@ -23,6 +23,7 @@ const tiktokPosts: RecentPost[] = tiktokViews.map((views, index) => {
       : `Strength circuit day ${index + 1} #fitness #workout #gym`,
     isSponsored,
     thumbnailUrl: null,
+    postUrl: null,
     engagementRate,
     isBreakout: views > 36000
   };
@@ -51,6 +52,7 @@ const instagramPosts: RecentPost[] = [
   caption: caption as string,
   isSponsored: false,
   thumbnailUrl: null,
+  postUrl: null,
   engagementRate: Number(((((likes as number) + (comments as number)) / 85000) * 100).toFixed(2)),
   isBreakout: false
 }));
