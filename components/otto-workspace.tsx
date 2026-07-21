@@ -312,13 +312,11 @@ export function OttoWorkspace({
 
   if (!selectedRecommendation) {
     return (
-      <section className="rounded-lg border border-ink/10 bg-white p-6">
+      <section className="rounded-[8px] border border-ink/10 bg-white p-6">
         <p className="text-sm font-semibold uppercase tracking-[0.14em] text-signal">
           Otto Workspace
         </p>
-        <h2 className="mt-3 text-3xl font-semibold tracking-tight">
-          Select an action
-        </h2>
+        <h2 className="mt-3 text-3xl font-semibold tracking-tight">Preparing mission</h2>
       </section>
     );
   }
@@ -423,27 +421,31 @@ export function OttoWorkspace({
   }
 
   const preparedAssets = getPreparedAssets(selectedRecommendation);
+  const workspaceMode = getWorkspaceMode(selectedRecommendation);
 
   return (
-    <section className="landing-rise min-w-0 rounded-lg border border-ink/10 bg-white">
-      <div className="border-b border-ink/10 px-5 py-4">
+    <section
+      className="landing-rise min-w-0 rounded-[8px] border border-ink/10 bg-white"
+      id="workspace"
+    >
+      <div className="px-7 pb-5 pt-7">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-signal">
-          Otto Workspace
+          {workspaceMode.eyebrow}
         </p>
-        <p className="mt-2 text-sm font-medium text-ink/45">
-          The single most important thing to do today
-        </p>
-        <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+        <h2 className="mt-2 text-[30px] font-semibold leading-9 tracking-tight">
           {selectedRecommendation.title}
         </h2>
+        <p className="mt-3 max-w-3xl font-serif text-lg italic leading-8 text-ink/78">
+          {workspaceMode.lede}
+        </p>
       </div>
 
-      <div className="grid gap-3 p-4">
+      <div className="grid gap-4 px-7 pb-7">
         <WorkspaceSection defaultOpen title="Recommendation Summary">
           <p className="text-sm leading-6 text-ink/64">
             {selectedRecommendation.description}
           </p>
-          <span className="mt-4 inline-flex rounded bg-paper px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-ink/55">
+          <span className="mt-4 inline-flex rounded-full bg-stone px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-ink/55">
             {selectedRecommendation.actionType}
           </span>
         </WorkspaceSection>
@@ -451,7 +453,7 @@ export function OttoWorkspace({
         <WorkspaceSection defaultOpen title="Expected Impact">
           <div className="grid gap-2 sm:grid-cols-3">
             {selectedRecommendation.supportingMetrics.map((metric) => (
-              <div className="rounded-md border border-ink/10 p-3" key={metric.label}>
+              <div className="rounded-[6px] border border-ink/10 bg-stone p-3" key={metric.label}>
                 <p className="text-xs font-medium text-ink/45">{metric.label}</p>
                 <p className="mt-1 text-lg font-semibold">{metric.value}</p>
                 <p className="text-xs text-moss">{metric.trend}</p>
@@ -463,7 +465,7 @@ export function OttoWorkspace({
         <WorkspaceSection defaultOpen title="Why Otto Recommends This">
           <ul className="grid gap-2">
             {selectedRecommendation.reasoning.map((reason) => (
-              <li className="rounded-md bg-paper p-3 text-sm leading-6 text-ink/66" key={reason}>
+              <li className="rounded-[6px] bg-stone p-3 text-sm leading-6 text-ink/66" key={reason}>
                 {reason}
               </li>
             ))}
@@ -473,7 +475,7 @@ export function OttoWorkspace({
         <WorkspaceSection title="AI Suggested Actions">
           <ol className="grid gap-2">
             {getSuggestedActions(selectedRecommendation).map((action) => (
-              <li className="rounded-md border border-ink/10 px-3 py-2 text-sm text-ink/68" key={action}>
+              <li className="rounded-[6px] border border-ink/10 px-3 py-2 text-sm text-ink/68" key={action}>
                 {action}
               </li>
             ))}
@@ -494,9 +496,9 @@ export function OttoWorkspace({
                     {message.role === "otto" ? "Otto" : "You"}
                   </span>
                   <p
-                    className={`max-w-[92%] whitespace-pre-wrap rounded-md px-3 py-2 text-sm leading-6 ${
+                    className={`max-w-[92%] whitespace-pre-wrap rounded-[6px] px-3 py-2 text-sm leading-6 ${
                       message.role === "otto"
-                        ? "bg-paper text-ink/68"
+                        ? "bg-stone text-ink/68"
                         : "bg-ink text-white"
                     }`}
                   >
@@ -517,7 +519,7 @@ export function OttoWorkspace({
                         </button>
                       ))}
                       {loadingActionsForMessage === message.id ? (
-                        <span className="rounded-full bg-paper px-3 py-1.5 text-xs font-semibold text-ink/40">
+                        <span className="rounded-full bg-stone px-3 py-1.5 text-xs font-semibold text-ink/40">
                           Generating actions...
                         </span>
                       ) : null}
@@ -529,16 +531,16 @@ export function OttoWorkspace({
 
             <form className="flex flex-col gap-2 sm:flex-row" onSubmit={submitConversation}>
               <input
-                className="min-h-11 flex-1 rounded-md border border-ink/10 bg-white px-3 text-sm outline-none transition placeholder:text-ink/30 focus:border-signal"
+                className="min-h-11 flex-1 rounded-[8px] border border-ink/10 bg-white px-4 text-sm outline-none transition placeholder:text-ink/30 focus:border-signal"
                 onChange={(event) => setConversationInput(event.target.value)}
-                placeholder="Ask Otto about this mission..."
+                placeholder={workspaceMode.placeholder}
                 value={conversationInput}
               />
               <button
-                className="min-h-11 rounded-md border border-ink/15 px-4 text-sm font-semibold text-ink/68 transition hover:border-ink/35 hover:text-ink"
+                className="min-h-11 rounded-[8px] bg-ink px-4 text-sm font-semibold text-white transition hover:bg-ink/86"
                 type="submit"
               >
-                Send
+                →
               </button>
             </form>
           </div>
@@ -548,7 +550,7 @@ export function OttoWorkspace({
           <div className="mb-4 grid gap-2">
             {preparedAssets.map((asset, index) => (
               <details
-                className={`rounded-md border border-ink/10 bg-white transition ${
+                className={`rounded-[6px] border border-ink/10 bg-white transition ${
                   index < revealedAssetCount ? "opacity-100" : "opacity-0"
                 }`}
                 key={asset.title}
@@ -566,14 +568,14 @@ export function OttoWorkspace({
           </div>
 
           {email ? (
-            <div className="rounded-lg border border-ink/10 bg-paper p-4">
+            <div className="rounded-[8px] border border-ink/10 bg-stone p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-signal">
                     Draft email
                   </p>
                   <input
-                    className="mt-2 w-full rounded-md border border-ink/10 bg-white px-3 py-2 text-lg font-semibold outline-none focus:border-signal sm:min-w-[360px]"
+                    className="mt-2 w-full rounded-[6px] border border-ink/10 bg-white px-3 py-2 text-lg font-semibold outline-none focus:border-signal sm:min-w-[360px]"
                     onChange={(event) =>
                       setEmail({
                         ...email,
@@ -584,7 +586,7 @@ export function OttoWorkspace({
                   />
                 </div>
                 <button
-                  className="h-10 rounded-md border border-ink/15 px-4 text-sm font-semibold text-ink/68 transition hover:border-ink/35 hover:text-ink"
+                  className="h-10 rounded-[6px] border border-ink/15 bg-white px-4 text-sm font-semibold text-ink/68 transition hover:border-ink/35 hover:text-ink"
                   onClick={copyEmail}
                   type="button"
                 >
@@ -593,12 +595,12 @@ export function OttoWorkspace({
               </div>
 
               <textarea
-                className="mt-4 min-h-[220px] w-full resize-y rounded-md border border-ink/10 bg-white p-3 text-sm leading-6 outline-none focus:border-signal"
+                className="mt-4 min-h-[220px] w-full resize-y rounded-[6px] border border-ink/10 bg-white p-3 text-sm leading-6 outline-none focus:border-signal"
                 onChange={(event) => setEmailBody(event.target.value)}
                 value={emailBody}
               />
 
-              <div className="mt-4 rounded-md border border-moss/20 bg-white p-3">
+              <div className="mt-4 rounded-[6px] border border-moss/20 bg-white p-3">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-moss">
                   Metric proof
                 </p>
@@ -619,7 +621,7 @@ export function OttoWorkspace({
               Otto has prepared the starting materials. Choose the next workflow below or ask a specific follow-up.
             </p>
             <button
-              className="min-h-11 rounded-md bg-ink px-5 text-sm font-semibold text-white transition hover:bg-ink/86 disabled:cursor-not-allowed disabled:bg-ink/35"
+              className="min-h-11 rounded-[8px] bg-ink px-5 text-sm font-semibold text-white transition hover:bg-ink/86 disabled:cursor-not-allowed disabled:bg-ink/35"
               disabled={isDrafting}
               onClick={draftOutreach}
               type="button"
@@ -646,16 +648,40 @@ function WorkspaceSection({
 }: WorkspaceSectionProps) {
   return (
     <details
-      className="group rounded-md border border-ink/10 bg-white open:bg-white"
+      className="group border-t border-ink/10 bg-white first:border-t-0"
       open={defaultOpen}
     >
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-ink">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-4 text-xs font-semibold uppercase tracking-[0.16em] text-ink/38">
         {title}
-        <span className="text-xs text-ink/35 transition group-open:rotate-90">›</span>
+        <span className="text-sm text-ink/35 transition group-open:rotate-90">›</span>
       </summary>
-      <div className="border-t border-ink/10 px-4 py-4">{children}</div>
+      <div className="pb-4">{children}</div>
     </details>
   );
+}
+
+function getWorkspaceMode(recommendation: Recommendation) {
+  if (recommendation.actionType === "content") {
+    return {
+      eyebrow: "Studio",
+      lede: `Build on the signal behind "${recommendation.title}" and turn it into an execution-ready content plan.`,
+      placeholder: "e.g. make the hook punchier, try a shorter script"
+    };
+  }
+
+  if (recommendation.actionType === "pricing") {
+    return {
+      eyebrow: "Pricing",
+      lede: "Use the strongest creator metrics to justify a rate card and answer brand pricing questions with confidence.",
+      placeholder: "e.g. what if a brand asks for a bundled rate?"
+    };
+  }
+
+  return {
+    eyebrow: "Brand pipeline",
+    lede: "Turn the highest-fit partnership opportunity into a concrete outreach asset with metric-backed proof.",
+    placeholder: "e.g. make the pitch more direct, show the strongest proof"
+  };
 }
 
 function getSuggestedActions(recommendation: Recommendation) {

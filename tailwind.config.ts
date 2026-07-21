@@ -12,6 +12,7 @@ const config: Config = {
         ink: "#111111",
         paper: "#fbf7ed",
         signal: "#ff6b35",
+        stone: "#f5f1eb",
         moss: "#5f7a61"
       }
     }
