@@ -348,11 +348,11 @@ function DashboardNav({
 
   return (
     <header className="sticky top-0 z-10 flex h-[56px] w-full items-center gap-5 border-b border-ink/10 bg-white px-[32px]">
-      <a className="shrink-0 text-[30px] font-semibold leading-none tracking-tight" href="/">
-        O
+      <a className="shrink-0 text-[24px] font-semibold leading-none tracking-tight" href="/">
+        Otto
       </a>
 
-      <nav className="flex min-w-0 flex-1 items-stretch justify-start gap-[30px] self-stretch pl-[58px]">
+      <nav className="flex min-w-0 flex-1 items-stretch justify-start gap-[30px] self-stretch pl-[42px]">
         {tabs.map((tab) => {
           const active = activeTab === tab.id;
 
@@ -1350,10 +1350,6 @@ function PricingPanel({
 
       if (!response.ok) {
         throw new Error(payload.error ?? "Unable to update pricing.");
-      }
-
-      if (payload.rates) {
-        setRates(payload.rates);
       }
 
       setPricingMessages((messages) => [
